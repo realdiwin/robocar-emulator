@@ -34,6 +34,8 @@
 
 char data[524288];
 
+int state = 0;
+
 std::vector<justine::sampleclient::MyShmClient::Gangster> justine::sampleclient::MyShmClient::gangsters ( boost::asio::ip::tcp::socket & socket, int id,
     osmium::unsigned_object_id_type cop )
 {
@@ -74,7 +76,12 @@ std::vector<justine::sampleclient::MyShmClient::Gangster> justine::sampleclient:
 
   std::sort ( gangsters.begin(), gangsters.end(), [this, cop] ( Gangster x, Gangster y )
   {
-    return dst ( cop, x.to ) < dst ( cop, y.to );
+      if(state == 0)
+      {
+          return dst ( cop, x.to ) < dst ( cop, y.to );
+      } else {
+          return dst ( cop, x.to ) > dst ( cop, y.to );
+      }
   } );
 
   std::cout.write ( data, length );
@@ -339,25 +346,42 @@ void justine::sampleclient::MyShmClient::start10 ( boost::asio::io_service& io_s
 
   std::vector<Gangster> gngstrs;
 
+  int group = 2;
+  unsigned elit[group];
+
   for ( ;; )
     {
       std::this_thread::sleep_for ( std::chrono::milliseconds ( 200 ) );
 
-      for ( auto cop:cops )
+      for (int ii = 0; ii < cops.size(); ++ii)//auto cop:cops
         {
-          car ( socket, cop, &f, &t, &s );
+          car ( socket, cops[ii], &f, &t, &s );
 
-          gngstrs = gangsters ( socket, cop, t );
-
+          /*
           if ( gngstrs.size() > 0 )
             g = gngstrs[0].to;
           else
             g = 0;
+          */
 
-          if ( g > 0 )
+          if( ii < group){
+
+            gngstrs = gangsters ( socket, cops[ii], t );
+
+            if ( gngstrs.size() > 0 ){
+              elit[ii] = gngstrs[0].to;
+            }
+            if(state == 0) {
+              state = 1;
+            } else {
+              state = 0;
+            }
+          }
+          //vizsgáljuk, hogy adhatunk-e még egyáltalán gangstert
+          if ( 0 < elit[ ii % group ])
             {
-
-              std::vector<osmium::unsigned_object_id_type> path = hasDijkstraPath ( t, g );
+              //Megadjuk az útvonalat az adott rendőrnek, ahol éppen tartunk!
+              std::vector<osmium::unsigned_object_id_type> path = hasDijkstraPath ( t, elit[ii%group] );
 
               if ( path.size() > 1 )
                 {
@@ -365,9 +389,11 @@ void justine::sampleclient::MyShmClient::start10 ( boost::asio::io_service& io_s
                   std::copy ( path.begin(), path.end(),
                               std::ostream_iterator<osmium::unsigned_object_id_type> ( std::cout, " -> " ) );
 
-                  route ( socket, cop, path );
+                  route ( socket, cops[ii], path );
                 }
             }
+
         }
     }
+
 }
